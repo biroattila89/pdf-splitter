@@ -1,9 +1,9 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs').promises;
 const { PDFDocument } = require('pdf-lib');
 
-const OUTPUT_DIRECTORY = path.join(__dirname, 'output');
+const DEFAULT_OUTPUT_DIRECTORY = path.join(__dirname, 'output');
 const LOG_DIRECTORY = path.join(__dirname, 'logs');
 const ERROR_LOG_PATH = path.join(LOG_DIRECTORY, 'error.log');
 const A4_SHORTER_SIDE_MAX = 700;
@@ -20,10 +20,34 @@ function createWindow() {
     height: 250,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
+      nodeIntegration: true
     },
   });
 
   mainWindow.loadFile('index.html');
+
+  const menuTemplate = [
+    {
+      label: 'File',
+      submenu: [
+        {role: 'quit'}
+      ]
+    },
+    {
+      label: 'Help',
+      submenu: [
+        {
+          label: 'About',
+          click: async () => {
+            await shell.openExternal('https://github.com/biroattila89/pdf-splitter');
+          }
+        }
+      ]
+    }
+  ];
+
+  const menu = Menu.buildFromTemplate(menuTemplate);
+  Menu.setApplicationMenu(menu);
 }
 
 app.whenReady().then(() => {
@@ -41,13 +65,25 @@ app.on('window-all-closed', () => {
 
 async function handlePdfSelection() {
   try {
+    mainWindow.setProgressBar(-1);
+
     const { filePaths } = await dialog.showOpenDialog(mainWindow, {
       properties: ['openFile'],
       filters: [{ name: 'PDFs', extensions: ['pdf'] }],
+      message: 'Select pdf file to split'
     });
 
     if (filePaths.length > 0) {
-      const result = await splitPDF(filePaths[0]);
+      const { filePaths: outputPaths } = await dialog.showOpenDialog({
+        properties: ['openDirectory'],
+        message: 'Select an output folder for the split PDFs'
+      })
+      let customOutputPath = DEFAULT_OUTPUT_DIRECTORY;
+      if (outputPaths.length > 0) {
+        customOutputPath = outputPaths[0];
+      }
+
+      const result = await splitPDF(filePaths[0], customOutputPath);
       showAlert(result);
     }
   } catch (error) {
@@ -76,16 +112,18 @@ async function logError(error, context) {
   }
 }
 
-async function splitPDF(filePath) {
+async function splitPDF(filePath, outputDirPath) {
   try {
     const originalPdfBytes = await fs.readFile(filePath);
     const pdfDoc = await PDFDocument.load(originalPdfBytes);
     const sanitizedFileName = sanitizeFileName(filePath);
     const categorizedPages = categorizePages(pdfDoc, sanitizedFileName);
+    const outputFinalDirPath = path.join(outputDirPath, sanitizedFileName);
 
-    await exportCategorizedPages(pdfDoc, categorizedPages, sanitizedFileName);
+    await exportCategorizedPages(pdfDoc, categorizedPages, sanitizedFileName, outputFinalDirPath);
+    mainWindow.setProgressBar(-1);
 
-    return { success: true, message: "All PDFs have been successfully created." };
+    return { success: true, message: `All PDFs have been successfully created and can be found in the directory: ${outputFinalDirPath}` };
   } catch (error) {
     logError(error, `Splitting PDF: ${path.basename(filePath)}`);
 
@@ -115,7 +153,8 @@ function categorizePages(pdfDoc, sanitizedFileName) {
     }
     categorizedPages.get(fullCategory).push(i);
     mainWindow.webContents.send('progress-update', progress);
-  };
+    mainWindow.setProgressBar(progress);
+  }
 
   return categorizedPages;
 }
@@ -134,10 +173,8 @@ function determineCategory(width, height) {
   return category;
 }
 
-async function exportCategorizedPages(pdfDoc, categorizedPages, sanitizedFileName) {
-  const outputDirPath = path.join(OUTPUT_DIRECTORY, sanitizedFileName);
-
-  await fs.mkdir(outputDirPath, { recursive: true });
+async function exportCategorizedPages(pdfDoc, categorizedPages, sanitizedFileName, outputFinalDirPath) {
+  await fs.mkdir(outputFinalDirPath, { recursive: true });
 
   for (const [fileName, pageIndices] of categorizedPages) {
     const newPdf = await PDFDocument.create();
@@ -146,7 +183,7 @@ async function exportCategorizedPages(pdfDoc, categorizedPages, sanitizedFileNam
     copiedPages.forEach((page) => newPdf.addPage(page));
 
     const newPdfBytes = await newPdf.save();
-    const newFilePath = path.join(outputDirPath, `${fileName}.pdf`);
+    const newFilePath = path.join(outputFinalDirPath, `${fileName}.pdf`);
 
     await fs.writeFile(newFilePath, newPdfBytes);
   }
