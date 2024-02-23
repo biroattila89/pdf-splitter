@@ -1,4 +1,3 @@
-const progressBarEl = document.getElementById('progress-bar');
 const progressEl = document.getElementById('progress');
 const progressTextEl = document.getElementById('progress-text');
 const body = document.getElementById('progress-body');
