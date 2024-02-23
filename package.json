@@ -1,0 +1,16 @@
+{
+  "name": "pdf-splitter",
+  "version": "1.0.0",
+  "description": "",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron --inspect=9229 main.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "electron": "^29.0.1",
+    "pdf-lib": "^1.17.1"
+  }
+}

@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PDF Splitter</title>
+  <style>
+    html {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      width: 100%;
+    }
+
+    body {
+      background: #ddd;
+      color: #666;
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      text-align: center;
+      background-image: linear-gradient(to right, #f1f1f1, #ddd);
+    }
+
+    .button-holder {
+      text-align: center;
+    }
+
+    h1 {
+      margin-top: 6px;
+      margin-bottom: 6px;
+    }
+
+    .button {
+      max-width: 150px;
+      padding: 10px 30px;
+      border: 0;
+      background: linear-gradient(135deg, #e20613, #b61c00);
+      color: white;
+      font-size: 16px;
+      font-weight: bold;
+      border-radius: 50px;
+      cursor: pointer;
+      outline: none;
+      box-shadow: 0 2px 6px rgb(103 103 103 / 70%);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .button:hover {
+      /*background: linear-gradient(to right, #b61c00, #e20613);*/
+      box-shadow: 0 3px 6px rgb(103 103 103 / 75%);
+      transform: scale(99%) translateY(1px);
+    }
+
+    .button:active {
+      /*background: linear-gradient(to right, #b61c00, #e20613);*/
+      box-shadow: 0 3px 6px rgb(103 103 103 / 75%);
+      transform: scale(99%) translateY(1px);
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-evenly;
+    }
+
+    .body {
+      opacity: 0;
+      display: grid;
+      grid-template-columns: 1fr 40px;
+      margin-top: 20px;
+      grid-column-gap: 20px;
+    }
+
+    .progress-bar {
+      display: inline-block;
+      grid-auto-columns: 1fr 40px;
+      border: 1px solid #666;
+      border-radius: 8px;
+      height: 25px;
+      width: 100%;
+      text-align: center;
+      position: relative;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+      overflow: hidden;
+    }
+
+    .progress {
+      width: 0;
+      line-height: 20px;
+      height: 100%;
+      transition: width 0.5s ease-in-out;
+      background: linear-gradient(to right, #ff8081, #e20613);
+      border-radius: 0 8px 8px 0;
+    }
+
+    .progress-text {
+      display: flex;
+      align-items: center;
+      width: 100%;
+      justify-content: center;
+      height: 100%;
+      font-weight: 600;
+    }
+
+    .note {
+      margin-top: 10px;
+      font-size: 0.9em;
+    }
+  </style>
+</head>
+<body>
+<div class="header">
+  <h1>PDF Splitter</h1>
+  <div class="button-holder">
+    <button id="select-pdf-btn" class="button">Select PDF</button>
+  </div>
+</div>
+<div class="note">*Files will be saved in the 'output' folder next to this application.</div>
+<div id="progress-body" class="body">
+  <div id="progress-bar" class="progress-bar">
+    <div id="progress" class="progress"></div>
+  </div>
+  <div id="progress-text" class="progress-text"></div>
+</div>
+<script src="renderer.js"></script>
+</body>
+</html>
