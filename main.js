@@ -1,28 +1,76 @@
-const {app, BrowserWindow, Menu, ipcMain, dialog} = require('electron/main')
-const path = require('node:path')
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const path = require('path');
 const fs = require('fs').promises;
 const { PDFDocument } = require('pdf-lib');
-const logDirectoryDefault = __dirname;
+
+const OUTPUT_DIRECTORY = path.join(__dirname, 'output');
+const LOG_DIRECTORY = path.join(__dirname, 'logs');
+const ERROR_LOG_PATH = path.join(LOG_DIRECTORY, 'error.log');
 const A4_SHORTER_SIDE_MAX = 700;
 
-const isA4 = (value) => value < A4_SHORTER_SIDE_MAX;
-const isBigRatio = (biggerValue, smallerValue) => biggerValue / smallerValue > 1.5;
+const isA4 = (dimension) => dimension < A4_SHORTER_SIDE_MAX;
+const isBigRatio = (larger, smaller) => larger / smaller > 1.5;
 const isPortrait = (width, height) => width < height;
+
 let mainWindow;
 
-async function logError(error, filePath) {
-  const logDirectory = path.join(logDirectoryDefault, 'logs');
-  const logFilePath = path.join(logDirectory, 'error.log');
+function createWindow() {
+  mainWindow = new BrowserWindow({
+    width: 450,
+    height: 250,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+    },
+  });
+
+  mainWindow.loadFile('index.html');
+}
+
+app.whenReady().then(() => {
+  createWindow();
+  ipcMain.on('select-pdf', handlePdfSelection);
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
+});
+
+async function handlePdfSelection() {
+  try {
+    const { filePaths } = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openFile'],
+      filters: [{ name: 'PDFs', extensions: ['pdf'] }],
+    });
+
+    if (filePaths.length > 0) {
+      const result = await splitPDF(filePaths[0]);
+      showAlert(result);
+    }
+  } catch (error) {
+    logError(error, "File selection process");
+    showAlert({ success: false, message: 'Failed to select PDF' });
+  }
+}
+
+function showAlert({ success, message }) {
+  dialog.showMessageBox(mainWindow, {
+    type: success ? 'info' : 'error',
+    title: success ? 'Operation Completed' : 'Error',
+    message,
+  });
+}
+
+async function logError(error, context) {
   const timestamp = new Date().toISOString();
-  const fileName = path.basename(filePath);
-  const errorMessage = `[${timestamp}] Error processing file: ${fileName}\nError Details: ${error.message}\n\n`;
+  const errorMessage = `[${timestamp}] Error in ${context}: ${error.message}\n\n`;
 
   try {
-    // Ensure the logs directory exists
-    await fs.mkdir(logDirectory, {recursive: true});
-
-    // Append the error message to the log file
-    await fs.appendFile(logFilePath, errorMessage, 'utf8');
+    await fs.mkdir(LOG_DIRECTORY, { recursive: true });
+    await fs.appendFile(ERROR_LOG_PATH, errorMessage, 'utf8');
   } catch (logError) {
     console.error("Failed to log error:", logError);
   }
@@ -32,114 +80,74 @@ async function splitPDF(filePath) {
   try {
     const originalPdfBytes = await fs.readFile(filePath);
     const pdfDoc = await PDFDocument.load(originalPdfBytes);
-    const rawFileName = path.basename(filePath, path.extname(filePath)).slice(0, 25);
-    const sanitizedFileName = rawFileName.replace(/[<>:"/\\|?*\x00-\x1F]/g, "_").trim()
-    const categorizedPages = new Map();
-    const pages = pdfDoc.getPages();
+    const sanitizedFileName = sanitizeFileName(filePath);
+    const categorizedPages = categorizePages(pdfDoc, sanitizedFileName);
 
-    for (let i = 0; i < pages.length; i++) {
-      const progress = (i + 1) / pages.length; // Calculate progress
-      mainWindow.webContents.send('progress-update', progress);
-      const page = pages[i];
-      const {width, height} = page.getSize();
-      let category = '';
+    await exportCategorizedPages(pdfDoc, categorizedPages, sanitizedFileName);
 
-      if (isPortrait(width, height)) {
-        category = isA4(width) ? 'A4_Portrait' : 'A3_Portrait';
-      } else {
-        category = isA4(height) ? 'A4_Landscape' : 'A3_Landscape';
-      }
-
-      if (isBigRatio(Math.max(width, height), Math.min(width, height))) {
-        category += '_Long';
-      }
-
-      const fullCategory = `${sanitizedFileName}_${category}`;
-      if (!categorizedPages.has(fullCategory)) {
-        categorizedPages.set(fullCategory, []);
-      }
-      categorizedPages.get(fullCategory).push(i);
-    }
-
-    const outputDirPath = path.join(logDirectoryDefault, 'output', sanitizedFileName)
-    await fs.mkdir(outputDirPath, {recursive: true});
-
-    await Promise.all(Array.from(categorizedPages.entries()).map(async ([fileName, pageIndices]) => {
-      const newPdf = await PDFDocument.create();
-      const copiedPages = await newPdf.copyPages(pdfDoc, pageIndices);
-      copiedPages.forEach(page => newPdf.addPage(page));
-      const newPdfBytes = await newPdf.save();
-      const newFilePath = path.join(outputDirPath, `${fileName}.pdf`);
-      await fs.writeFile(newFilePath, newPdfBytes);
-    }));
-
-    return {success: true, message: "All PDFs have been successfully created."};
+    return { success: true, message: "All PDFs have been successfully created." };
   } catch (error) {
-    console.error("Failed to split PDF:", error);
-    logError(error, filePath); // Log the error
+    logError(error, `Splitting PDF: ${path.basename(filePath)}`);
 
-    return {success: false, message: `Failed to split PDF: ${error.message}`};
+    return { success: false, message: `Failed to split PDF: ${error.message}` };
   }
 }
 
-async function handlePdfSelection() {
-  try {
-    const {filePaths} = await dialog.showOpenDialog({
-      properties: ['openFile'],
-      filters: [{name: 'PDFs', extensions: ['pdf']}],
-    });
+function sanitizeFileName(filePath) {
+  const rawFileName = path.basename(filePath, path.extname(filePath)).slice(0, 25);
 
-    if (filePaths && filePaths.length > 0) {
-      const result = await splitPDF(filePaths[0]);
+  return rawFileName.replace(/[<>:"/\\|?*\x00-\x1F]/g, "_").trim();
+}
 
-      if (result.success) {
-        dialog.showMessageBox({
-          type: 'info',
-          title: 'Operation Completed',
-          message: result.message,
-        });
-      } else {
-        dialog.showMessageBox({
-          type: 'error',
-          title: 'Error',
-          message: result.message,
-        });
-      }
+function categorizePages(pdfDoc, sanitizedFileName) {
+  const pages = pdfDoc.getPages();
+  const categorizedPages = new Map();
 
-      return filePaths[0];
+  for (let i = 0; i < pages.length; i++) {
+    const page = pages[i];
+    const progress = (i + 1) / pages.length;
+    const { width, height } = page.getSize();
+    const category = determineCategory(width, height);
+    const fullCategory = `${sanitizedFileName}_${category}`;
+
+    if (!categorizedPages.has(fullCategory)) {
+      categorizedPages.set(fullCategory, []);
     }
-  } catch (error) {
-    console.error("Failed to select PDF:", error);
-    logError(error, "File selection process");
-    dialog.showMessageBox({
-      type: 'error',
-      title: 'Error',
-      message: 'Failed to select PDF',
-    });
+    categorizedPages.get(fullCategory).push(i);
+    mainWindow.webContents.send('progress-update', progress);
+  };
+
+  return categorizedPages;
+}
+
+function determineCategory(width, height) {
+  let category = isPortrait(width, height) ? 'A4_Portrait' : 'A4_Landscape';
+
+  if (!isA4(isPortrait(width, height) ? width : height)) {
+    category = category.replace('A4', 'A3');
+  }
+
+  if (isBigRatio(Math.max(width, height), Math.min(width, height))) {
+    category += '_Long';
+  }
+
+  return category;
+}
+
+async function exportCategorizedPages(pdfDoc, categorizedPages, sanitizedFileName) {
+  const outputDirPath = path.join(OUTPUT_DIRECTORY, sanitizedFileName);
+
+  await fs.mkdir(outputDirPath, { recursive: true });
+
+  for (const [fileName, pageIndices] of categorizedPages) {
+    const newPdf = await PDFDocument.create();
+    const copiedPages = await newPdf.copyPages(pdfDoc, pageIndices);
+
+    copiedPages.forEach((page) => newPdf.addPage(page));
+
+    const newPdfBytes = await newPdf.save();
+    const newFilePath = path.join(outputDirPath, `${fileName}.pdf`);
+
+    await fs.writeFile(newFilePath, newPdfBytes);
   }
 }
-
-function createWindow() {
-  mainWindow = new BrowserWindow({
-    width: 450,
-    height: 250,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js')
-    }
-  })
-  mainWindow.loadFile('index.html')
-  mainWindow.webContents.send('update-counter', '11')
-}
-
-app.whenReady().then(() => {
-  ipcMain.on('select-pdf', (_event) => handlePdfSelection())
-  createWindow()
-
-  app.on('activate', function () {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
-  })
-})
-
-app.on('window-all-closed', function () {
-  if (process.platform !== 'darwin') app.quit()
-})
