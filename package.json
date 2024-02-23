@@ -7,7 +7,10 @@
     "start" : "electron .",
     "dev" : "electron --inspect=9229 main.js",
     "pack" : "electron-builder --dir",
-    "dist" : "electron-builder -w -m"
+    "dist" : "electron-builder -w -m -l",
+    "dist:mac" : "electron-builder -m",
+    "dist:win" : "electron-builder -w",
+    "dist:linux" : "electron-builder -l"
   },
   "build" : {
     "appId" : "com.biro-attila.splitter",
@@ -25,6 +28,9 @@
         "zip"
       ],
       "icon" : "assets/win-pdf.ico"
+    },
+    "linux": {
+      "target": ["AppImage", "deb", "rpm", "zip"]
     }
   },
   "author" : "",
