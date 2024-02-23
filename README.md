@@ -6,7 +6,7 @@ The PDF Splitter is an Electron-based project. This application is used to split
 
 Before you start your work with PDF Splitter, ensure that you have Node.js and npm installed on your system. Navigate to the project directory and run the following command to install all the dependencies:
 
-**bash npm install**
+**npm install**
 
 ## Dependencies
 Our project relies on several dependencies:
@@ -14,10 +14,37 @@ Our project relies on several dependencies:
 - Electron: A framework which lets us write cross-platform desktop applications using HTML, CSS and JavaScript. We're using version 29.0.1.
 - PDF-Lib: A versatile JavaScript library that can help us handle a lot of PDF-related tasks, like splitting, merging, and modifying PDF pages. We're using version 1.17.1.
 
-## Getting Started
-To start the application:
+## Building and Packaging
 
-**bash npm start**
+This project provides two npm scripts for building and packaging the application: `pack` and `dist`.
+
+### npm run pack
+
+The `npm run pack` command is used to compile the application into an unpackaged format. This is useful for testing the build process and the application itself without creating a distributable installer. The output will be placed in the `dist` folder but will not include installer files. This is a quick way to verify the application's build without going through the packaging and distribution steps.
+
+To execute this command, use:
+
+```bash
+npm run pack
+```
+
+### npm run dist
+
+The `npm run dist` command is used for creating a distributable version of the application. This includes packaging the application into a format suitable for distribution (e.g., .exe for **Windows**, .dmg for **macOS**). It utilizes the configurations defined in the build section of the package.json, ensuring that the application is correctly packaged for the target platforms.
+
+Running this command generates the installer files in the dist folder, making it easy to distribute the application to users.
+
+To execute this command, use:
+
+```bash
+npm run dist
+```
+
+## Starting the application
+To start the application, use:
+```bash
+npm start
+```
 
 ## Contributing
 We warmly welcome contributions to PDF Splitter. Please make sure that your code follows our coding standards.
